@@ -1,0 +1,28 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent2
+  namespace: food-app
+  labels:
+    app: agent2
+    app.kubernetes.io/managed-by: agent2
+rules:
+  # ── Deployments: scale + rolling restart + read ───────────────────────────
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "patch", "update"]
+
+  # ── Deployment scale sub-resource ────────────────────────────────────────
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "patch", "update"]
+
+  # ── Pods: read-only (for optional health diagnostics) ────────────────────
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+
+  # ── Pod logs: read-only (diagnostic only, not executed) ──────────────────
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]

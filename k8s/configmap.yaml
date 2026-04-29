@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent2-config
+  namespace: food-app
+  labels:
+    app: agent2
+    app.kubernetes.io/managed-by: agent2
+data:
+  # ── Redis ────────────────────────────────────────────────────────────────
+  REDIS_HOST: "redis.food-app.svc.cluster.local"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  REDIS_QUEUE_NAME: "runbooks"
+  REDIS_BRPOP_TIMEOUT: "5"
+
+  # ── Kubernetes scope ──────────────────────────────────────────────────────
+  TARGET_NAMESPACE: "food-app"
+  ALLOWED_NAMESPACES: "food-app"
+
+  # ── Safety ────────────────────────────────────────────────────────────────
+  # Set ENABLE_EXECUTION to "false" to run in observe-only mode.
+  # Set DRY_RUN to "true" to log what would happen without acting.
+  ENABLE_EXECUTION: "true"
+  DRY_RUN: "false"
+  ALLOWED_ACTIONS: "scale_deployment,restart_deployment"
+
+  # ── Rate limiting / deduplication ─────────────────────────────────────────
+  COOLDOWN_SECONDS: "60"
+  RUNBOOK_DEDUP_TTL: "3600"
+
+  # ── Reliability ───────────────────────────────────────────────────────────
+  RECONNECT_DELAY_SECONDS: "5"
+  MAX_RETRY_ATTEMPTS: "3"
+  RETRY_BACKOFF_FACTOR: "2.0"
+
+  # ── Logging ───────────────────────────────────────────────────────────────
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+
+  # ── Health check ──────────────────────────────────────────────────────────
+  HEALTH_PORT: "8080"
+  ENABLE_HEALTH_SERVER: "true"

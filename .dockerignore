@@ -1,0 +1,32 @@
+# Development artefacts
+.git/
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Tests and coverage
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.DS_Store
+
+# CI / CD
+.github/
+Makefile
+
+# Local env files
+.env
+*.kubeconfig
+k8s/secret.yaml
