@@ -40,7 +40,7 @@ def _make_handler() -> type:
                     self._respond(200, {"status": "ready"})
                 else:
                     self._respond(503, {"status": "not_ready", "reason": "redis_not_connected"})
-            elif self.path == "/logs":
+            elif self.path.split("?", 1)[0].rstrip("/") == "/logs":
                 try:
                     store = get_execution_log_store()
                     limit = max(1, min(settings.EXECUTION_LOG_API_LIMIT, 100))
