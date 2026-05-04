@@ -15,6 +15,7 @@ import signal
 import threading
 
 from app.config import settings
+from app.execution_logs import init_execution_log_store
 from app.health import signal_ready, start_health_server
 from app.kubernetes_client import load_kube_config
 from app.logging_config import get_logger, setup_logging
@@ -28,6 +29,10 @@ logger = get_logger(__name__)
 def main() -> None:
     # Logging MUST be configured first so every subsequent log call is structured.
     setup_logging(level=settings.LOG_LEVEL, fmt=settings.LOG_FORMAT)
+
+    # Initialise the execution log store early so the HTTP endpoint can serve
+    # logs even before the first runbook arrives.
+    init_execution_log_store(redis_client=None)
 
     logger.info(
         "Agent 2 starting up",

@@ -23,6 +23,8 @@ import redis
 from pydantic import ValidationError
 
 from app.config import settings
+from app.execution_logs import ExecutionLogEntry, get_execution_log_store, utc_now_iso
+from app.execution_logs import init_execution_log_store
 from app.executor import Executor
 from app.logging_config import get_logger
 from app.models import ExecutionPlan, Runbook
@@ -115,6 +117,8 @@ class RedisWorker:
                 "Connected to Redis",
                 extra={"host": settings.REDIS_HOST, "port": settings.REDIS_PORT},
             )
+            # Wire the execution log store to Redis once we know Redis is reachable.
+            init_execution_log_store(redis_client=self._redis)
 
     def _poll_once(self) -> None:
         """
@@ -137,6 +141,7 @@ class RedisWorker:
 
     def _handle_message(self, raw_payload: str) -> None:
         """Parse, validate, and execute one runbook message."""
+        store = get_execution_log_store()
 
         # ── 1. JSON parse ──────────────────────────────────────────────────────
         try:
@@ -157,6 +162,21 @@ class RedisWorker:
                 extra={"errors": exc.errors(), "raw": str(data)[:200]},
             )
             return
+
+        incident_type = str(runbook.incident_type or "Unknown")
+
+        store.append(
+            ExecutionLogEntry(
+                timestamp=utc_now_iso(),
+                event="runbook_received",
+                runbook_id=runbook.runbook_id,
+                incident_type=incident_type,
+                action=None,
+                command="runbook_received",
+                status="success",
+                error=None,
+            )
+        )
 
         logger.info(
             "Received runbook",
@@ -182,10 +202,35 @@ class RedisWorker:
             execution_plan=runbook.execution_plan,
         )
 
+        store.append(
+            ExecutionLogEntry(
+                timestamp=utc_now_iso(),
+                event="runbook_parsed",
+                runbook_id=runbook.runbook_id,
+                incident_type=incident_type,
+                action=None,
+                command=f"parsed_actions={len(raw_actions)}",
+                status="success",
+                error=None,
+            )
+        )
+
         if not raw_actions:
             logger.info(
                 "No executable actions found in runbook",
                 extra={"runbook_id": runbook.runbook_id},
+            )
+            store.append(
+                ExecutionLogEntry(
+                    timestamp=utc_now_iso(),
+                    event="no_actions_found",
+                    runbook_id=runbook.runbook_id,
+                    incident_type=incident_type,
+                    action=None,
+                    command="No executable actions found",
+                    status="skipped",
+                    error=None,
+                )
             )
             self._dedup.mark_processed(runbook.runbook_id)
             return
@@ -225,7 +270,7 @@ class RedisWorker:
         )
 
         # ── 6. Execute ─────────────────────────────────────────────────────────
-        report = self._executor.run(approved_plan)
+        report = self._executor.run(approved_plan, incident_type=incident_type)
 
         # Mark as processed regardless of success/failure to prevent replay loops
         self._dedup.mark_processed(runbook.runbook_id)

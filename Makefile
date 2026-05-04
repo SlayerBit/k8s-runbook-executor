@@ -52,12 +52,14 @@ k8s-apply:      ## Apply all Kubernetes manifests (namespace first)
 	kubectl apply -f k8s/serviceaccount.yaml
 	kubectl apply -f k8s/role.yaml
 	kubectl apply -f k8s/rolebinding.yaml
+	kubectl apply -f k8s/service.yaml
 	kubectl apply -f k8s/configmap.yaml
 	kubectl apply -f k8s/deployment.yaml
 
 k8s-delete:     ## Tear down Agent 2 resources (keeps namespace)
 	kubectl delete -f k8s/deployment.yaml --ignore-not-found
 	kubectl delete -f k8s/configmap.yaml  --ignore-not-found
+	kubectl delete -f k8s/service.yaml    --ignore-not-found
 
 k8s-status:     ## Show pod status in the target namespace
 	kubectl get pods -n $(NAMESPACE) -l app=agent2

@@ -78,6 +78,12 @@ class Config:
     HEALTH_PORT: int = int(os.environ.get("HEALTH_PORT", "8080"))
     ENABLE_HEALTH_SERVER: bool = _env_bool("ENABLE_HEALTH_SERVER", True)
 
+    # ── Execution Logs API (observability) ────────────────────────────────────
+    # Stored in Redis (preferred) with in-memory fallback.
+    EXECUTION_LOG_REDIS_KEY: str = os.environ.get("EXECUTION_LOG_REDIS_KEY", "agent2:execution_logs")
+    EXECUTION_LOG_MAX_ENTRIES: int = int(os.environ.get("EXECUTION_LOG_MAX_ENTRIES", "200"))
+    EXECUTION_LOG_API_LIMIT: int = int(os.environ.get("EXECUTION_LOG_API_LIMIT", "100"))
+
 
 # Singleton instance — import this everywhere
 settings = Config()

@@ -14,12 +14,13 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 from kubernetes.client.exceptions import ApiException
 
 from app import kubernetes_client as k8s
 from app.config import settings
+from app.execution_logs import ExecutionLogEntry, get_execution_log_store, utc_now_iso
 from app.logging_config import get_logger
 from app.models import (
     ActionType,
@@ -27,6 +28,7 @@ from app.models import (
     DeletePodAction,
     ExecutionAction,
     ExecutionPlan,
+    RestartDeploymentAction,
     RollbackDeploymentAction,
     ScaleDeploymentAction,
     UpdateResourcesAction,
@@ -106,9 +108,11 @@ class Executor:
         self._dry_run = dry_run or not settings.ENABLE_EXECUTION
         self._stop_on_failure = stop_on_failure
 
-    def run(self, plan: ExecutionPlan) -> ExecutionReport:
+    def run(self, plan: ExecutionPlan, incident_type: Optional[str] = None) -> ExecutionReport:
         """Execute every action in the plan and return an ExecutionReport."""
         report = ExecutionReport(runbook_id=plan.runbook_id)
+        store = get_execution_log_store()
+        incident = str(incident_type or "Unknown")
 
         if not plan.actions:
             logger.info("Execution plan is empty — nothing to do", extra={"runbook_id": plan.runbook_id})
@@ -125,6 +129,19 @@ class Executor:
 
         for idx, action in enumerate(plan.actions, start=1):
             ns = action.namespace or self._namespace
+            cmd = _kubectl_equivalent(action, ns)
+            store.append(
+                ExecutionLogEntry(
+                    timestamp=utc_now_iso(),
+                    event="command_execution_started",
+                    runbook_id=plan.runbook_id,
+                    incident_type=incident,
+                    action=action.action.value,
+                    command=cmd,
+                    status="success",
+                    error=None,
+                )
+            )
             logger.info(
                 "Executing step",
                 extra={
@@ -137,7 +154,7 @@ class Executor:
                 },
             )
 
-            result = self._execute_action(plan.runbook_id, action, ns)
+            result = self._execute_action(plan.runbook_id, action, ns, incident=incident, store=store)
             report.steps.append(result)
 
             if result.status == StepStatus.FAILED and self._stop_on_failure:
@@ -152,16 +169,35 @@ class Executor:
         return report
 
     def _execute_action(
-        self, runbook_id: str, action: ExecutionAction, namespace: str
+        self,
+        runbook_id: str,
+        action: ExecutionAction,
+        namespace: str,
+        *,
+        incident: str,
+        store,
     ) -> StepResult:
         t0 = time.monotonic()
         action_name = action.action.value
+        cmd = _kubectl_equivalent(action, namespace)
 
         if self._dry_run:
             detail = self._dry_run_description(action, namespace)
             logger.info(
                 "[DRY-RUN] Would execute",
                 extra={"runbook_id": runbook_id, "detail": detail},
+            )
+            store.append(
+                ExecutionLogEntry(
+                    timestamp=utc_now_iso(),
+                    event="command_execution_success",
+                    runbook_id=runbook_id,
+                    incident_type=incident,
+                    action=action_name,
+                    command=cmd,
+                    status="skipped",
+                    error=None,
+                )
             )
             # Still record the cooldown so repeated dry-runs behave consistently
             self._cooldown.record(action_name, action.deployment)
@@ -177,6 +213,18 @@ class Executor:
         try:
             self._dispatch(action, namespace)
             self._cooldown.record(action_name, action.deployment)
+            store.append(
+                ExecutionLogEntry(
+                    timestamp=utc_now_iso(),
+                    event="command_execution_success",
+                    runbook_id=runbook_id,
+                    incident_type=incident,
+                    action=action_name,
+                    command=cmd,
+                    status="success",
+                    error=None,
+                )
+            )
             return StepResult(
                 action=action_name,
                 deployment=action.deployment,
@@ -198,6 +246,18 @@ class Executor:
                     "reason": exc.reason,
                 },
             )
+            store.append(
+                ExecutionLogEntry(
+                    timestamp=utc_now_iso(),
+                    event="command_execution_failed",
+                    runbook_id=runbook_id,
+                    incident_type=incident,
+                    action=action_name,
+                    command=cmd,
+                    status="failed",
+                    error=detail,
+                )
+            )
             return StepResult(
                 action=action_name,
                 deployment=action.deployment,
@@ -215,6 +275,18 @@ class Executor:
                     "action": action_name,
                     "deployment": action.deployment,
                 },
+            )
+            store.append(
+                ExecutionLogEntry(
+                    timestamp=utc_now_iso(),
+                    event="command_execution_failed",
+                    runbook_id=runbook_id,
+                    incident_type=incident,
+                    action=action_name,
+                    command=cmd,
+                    status="failed",
+                    error=detail,
+                )
             )
             return StepResult(
                 action=action_name,
@@ -299,3 +371,39 @@ class Executor:
 
 def _elapsed_ms(t0: float) -> float:
     return round((time.monotonic() - t0) * 1000, 2)
+
+
+def _kubectl_equivalent(action: ExecutionAction, namespace: str) -> str:
+    """
+    Render the kubectl-equivalent command for the action as executed.
+
+    Agent 2 uses the Kubernetes Python client for safety/portability, but the
+    Simulator UI needs a canonical, human-readable command string.
+    """
+    ns = namespace.strip()
+    ns_arg = f" -n {ns}" if ns else ""
+
+    if action.action == ActionType.SCALE_DEPLOYMENT:
+        assert isinstance(action, ScaleDeploymentAction)
+        return f"kubectl scale deployment {action.deployment} --replicas={action.replicas}{ns_arg}"
+    if action.action == ActionType.RESTART_DEPLOYMENT:
+        assert isinstance(action, RestartDeploymentAction)
+        return f"kubectl rollout restart deployment {action.deployment}{ns_arg}"
+    if action.action == ActionType.ROLLBACK_DEPLOYMENT:
+        assert isinstance(action, RollbackDeploymentAction)
+        return f"kubectl rollout undo deployment {action.deployment}{ns_arg}"
+    if action.action == ActionType.DELETE_POD:
+        assert isinstance(action, DeletePodAction)
+        return f"kubectl delete pod {action.pod}{ns_arg}"
+    if action.action == ActionType.UPDATE_RESOURCES:
+        assert isinstance(action, UpdateResourcesAction)
+        # Not executed via kubectl in Agent 2, but rendered as a clear patch intent.
+        return (
+            f"kubectl set resources deployment {action.deployment} "
+            f"--limits=cpu={action.cpu},memory={action.memory}{ns_arg}"
+        )
+    if action.action == ActionType.DELETE_NETWORK_POLICY:
+        assert isinstance(action, DeleteNetworkPolicyAction)
+        return f"kubectl delete networkpolicy {action.name}{ns_arg}"
+
+    return f"kubectl <unknown_action:{action.action}>"

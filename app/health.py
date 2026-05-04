@@ -15,6 +15,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
+from app.config import settings
+from app.execution_logs import get_execution_log_store
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -38,6 +40,15 @@ def _make_handler() -> type:
                     self._respond(200, {"status": "ready"})
                 else:
                     self._respond(503, {"status": "not_ready", "reason": "redis_not_connected"})
+            elif self.path == "/logs":
+                try:
+                    store = get_execution_log_store()
+                    limit = max(1, min(settings.EXECUTION_LOG_API_LIMIT, 100))
+                    logs = store.latest(limit=limit)
+                except Exception:
+                    # Never crash the endpoint — return empty.
+                    logs = []
+                self._respond(200, {"logs": logs})
             else:
                 self._respond(404, {"status": "not_found"})
 

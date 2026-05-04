@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: agent2-config
-  namespace: default
+  namespace: food-app
   labels:
     app: agent2
     app.kubernetes.io/managed-by: agent2
@@ -38,6 +38,11 @@ data:
   # ── Logging ───────────────────────────────────────────────────────────────
   LOG_LEVEL: "INFO"
   LOG_FORMAT: "json"
+
+  # ── Execution logs API ────────────────────────────────────────────────────
+  EXECUTION_LOG_REDIS_KEY: "agent2:execution_logs"
+  EXECUTION_LOG_MAX_ENTRIES: "200"
+  EXECUTION_LOG_API_LIMIT: "100"
 
   # ── Health check ──────────────────────────────────────────────────────────
   HEALTH_PORT: "8080"
