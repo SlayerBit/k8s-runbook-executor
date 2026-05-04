@@ -51,7 +51,8 @@ class Config:
     # Allowlist of action types the agent may execute
     ALLOWED_ACTIONS: List[str] = _env_list(
         "ALLOWED_ACTIONS",
-        "scale_deployment,restart_deployment",
+        "scale_deployment,restart_deployment,rollback_deployment,"
+        "delete_pod,update_resources,delete_network_policy",
     )
 
     # ── Rate Limiting / Idempotency ───────────────────────────────────────────

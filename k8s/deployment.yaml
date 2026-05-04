@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: agent2
-  namespace: food-app
+  namespace: food-app 
   labels:
     app: agent2
     app.kubernetes.io/managed-by: agent2
@@ -41,7 +41,7 @@ spec:
 
       containers:
         - name: agent2
-          image: your-registry.io/your-project/agent2:latest
+          image: us-central1-docker.pkg.dev/food-app-backend-01/agent2-repo/k8s-runbook-executor:latest
           imagePullPolicy: Always
 
           securityContext:

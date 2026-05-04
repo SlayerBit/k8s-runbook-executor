@@ -21,7 +21,16 @@ from kubernetes.client.exceptions import ApiException
 from app import kubernetes_client as k8s
 from app.config import settings
 from app.logging_config import get_logger
-from app.models import ActionType, ExecutionAction, ExecutionPlan, ScaleDeploymentAction
+from app.models import (
+    ActionType,
+    DeleteNetworkPolicyAction,
+    DeletePodAction,
+    ExecutionAction,
+    ExecutionPlan,
+    RollbackDeploymentAction,
+    ScaleDeploymentAction,
+    UpdateResourcesAction,
+)
 from app.utils import CooldownTracker
 
 logger = get_logger(__name__)
@@ -231,6 +240,32 @@ class Executor:
                 deployment=action.deployment,
                 namespace=namespace,
             )
+        elif action.action == ActionType.ROLLBACK_DEPLOYMENT:
+            assert isinstance(action, RollbackDeploymentAction)
+            k8s.rollback_deployment(
+                deployment=action.deployment,
+                namespace=namespace,
+            )
+        elif action.action == ActionType.DELETE_POD:
+            assert isinstance(action, DeletePodAction)
+            k8s.delete_pod(
+                pod=action.pod,
+                namespace=namespace,
+            )
+        elif action.action == ActionType.UPDATE_RESOURCES:
+            assert isinstance(action, UpdateResourcesAction)
+            k8s.update_deployment_resources(
+                deployment=action.deployment,
+                namespace=namespace,
+                cpu=action.cpu,
+                memory=action.memory,
+            )
+        elif action.action == ActionType.DELETE_NETWORK_POLICY:
+            assert isinstance(action, DeleteNetworkPolicyAction)
+            k8s.delete_network_policy(
+                name=action.name,
+                namespace=namespace,
+            )
         else:
             raise ValueError(f"Unhandled action type: {action.action}")
 
@@ -244,6 +279,21 @@ class Executor:
             )
         if action.action == ActionType.RESTART_DEPLOYMENT:
             return f"rolling restart deployment/{action.deployment} in {namespace}"
+        if action.action == ActionType.ROLLBACK_DEPLOYMENT:
+            assert isinstance(action, RollbackDeploymentAction)
+            return f"rollback deployment/{action.deployment} to previous revision in {namespace}"
+        if action.action == ActionType.DELETE_POD:
+            assert isinstance(action, DeletePodAction)
+            return f"delete pod/{action.pod} in {namespace}"
+        if action.action == ActionType.UPDATE_RESOURCES:
+            assert isinstance(action, UpdateResourcesAction)
+            return (
+                f"update resources for deployment/{action.deployment} "
+                f"→ cpu={action.cpu} memory={action.memory} in {namespace}"
+            )
+        if action.action == ActionType.DELETE_NETWORK_POLICY:
+            assert isinstance(action, DeleteNetworkPolicyAction)
+            return f"delete networkpolicy/{action.name} in {namespace}"
         return f"unknown action {action.action}"
 
 

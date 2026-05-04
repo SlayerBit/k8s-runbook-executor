@@ -2,21 +2,22 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: agent2-config
-  namespace: food-app
+  namespace: default
   labels:
     app: agent2
     app.kubernetes.io/managed-by: agent2
 data:
   # ── Redis ────────────────────────────────────────────────────────────────
-  REDIS_HOST: "redis.food-app.svc.cluster.local"
+  REDIS_HOST: redis.default.svc.cluster.local
   REDIS_PORT: "6379"
   REDIS_DB: "0"
   REDIS_QUEUE_NAME: "runbooks"
   REDIS_BRPOP_TIMEOUT: "5"
 
   # ── Kubernetes scope ──────────────────────────────────────────────────────
-  TARGET_NAMESPACE: "food-app"
-  ALLOWED_NAMESPACES: "food-app"
+  TARGET_NAMESPACE: default
+  ALLOWED_NAMESPACES: default
+
 
   # ── Safety ────────────────────────────────────────────────────────────────
   # Set ENABLE_EXECUTION to "false" to run in observe-only mode.
